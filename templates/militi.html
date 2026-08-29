@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Anagrafica Militi - {{ associazione }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .filter-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 15px;
+      background: #f8f9fa;
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid #e9ecef;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filter-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .filter-item label {
+      font-size: 0.8em;
+      font-weight: bold;
+      color: #495057;
+    }
+    .filter-item input, .filter-item select {
+      padding: 6px 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">
+    <img src="{{ url_for('static', filename=logo) }}" alt="Logo" class="logo-img">
+    <strong>{{ associazione }}</strong>
+  </div>
+  <nav>
+    <a href="/">Timbratura</a>
+    <a href="/dashboard">Dashboard Excel</a>
+    <a href="/militi"><strong>Anagrafica Militi</strong></a>
+  </nav>
+</div>
+
+<div class="container">
+  <div class="card">
+    <h2 id="form-title">Aggiungi Nuovo Milite</h2>
+    <form action="/api/militi/salva" method="POST" id="milite-form">
+      <input type="hidden" name="id" id="milite_id">
+      
+      <div class="field">
+        <label>Matricola / Barcode:</label>
+        <input type="text" name="barcode_id" id="barcode_id" placeholder="Es. MIL-003" required>
+      </div>
+
+      <div class="field">
+        <label>Cognome:</label>
+        <input type="text" name="cognome" id="cognome" required>
+      </div>
+
+      <div class="field">
+        <label>Nome:</label>
+        <input type="text" name="nome" id="nome" required>
+      </div>
+
+      <div class="field">
+        <label>Ruolo:</label>
+        <select name="ruolo" id="ruolo">
+          <option value="volontario">Volontario</option>
+          <option value="dipendente">Dipendente</option>
+        </select>
+      </div>
+
+      <div class="field checkbox-field">
+        <input type="checkbox" name="attivo" id="attivo" value="1" checked>
+        <label for="attivo">Attivo</label>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <button type="submit" id="btn-save">Salva</button>
+        <button type="button" class="reset" onclick="resetForm()">Annulla</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Elenco Personale Registrato</h2>
+
+    <!-- Barra di filtraggio -->
+    <div class="filter-bar">
+      <div class="filter-item" style="flex-grow: 1;">
+        <label for="filter-search">Cerca per Matricola / Nome:</label>
+        <input type="text" id="filter-search" placeholder="Filtra per matricola, cognome o nome..." onkeyup="filtraTabella()">
+      </div>
+      <div class="filter-item">
+        <label for="filter-ruolo">Tipo Ruolo:</label>
+        <select id="filter-ruolo" onchange="filtraTabella()">
+          <option value="">Tutti i ruoli</option>
+          <option value="volontario">Volontario</option>
+          <option value="dipendente">Dipendente</option>
+        </select>
+      </div>
+      <div class="filter-item">
+        <label for="filter-stato">Stato:</label>
+        <select id="filter-stato" onchange="filtraTabella()">
+          <option value="">Tutti gli stati</option>
+          <option value="attivo">Attivo</option>
+          <option value="disattivato">Disattivato</option>
+        </select>
+      </div>
+    </div>
+
+    <table id="militi-table">
+      <thead>
+        <tr>
+          <th>Matricola</th>
+          <th class="sortable" onclick="ordinaPer('cognome')">
+            Cognome {% if sort_current == 'cognome' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}
+          </th>
+          <th class="sortable" onclick="ordinaPer('nome')">
+            Nome {% if sort_current == 'nome' %}{{ '▲' if sort_dir == 'asc' else '▼' }}{% endif %}
+          </th>
+          <th>Ruolo</th>
+          <th>Stato</th>
+          <th>Azioni</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in militi %}
+        <tr data-barcode="{{ m.barcode_id | lower }}" 
+            data-cognome="{{ m.cognome | lower }}" 
+            data-nome="{{ m.nome | lower }}" 
+            data-ruolo="{{ m.ruolo | lower }}" 
+            data-stato="{{ 'attivo' if m.attivo else 'disattivato' }}">
+          <td><code>{{ m.barcode_id }}</code></td>
+          <td><strong>{{ m.cognome }}</strong></td>
+          <td><strong>{{ m.nome }}</strong></td>
+          <td><span class="badge badge-{{ m.ruolo }}">{{ m.ruolo.upper() }}</span></td>
+          <td>{{ 'Attivo' if m.attivo else 'Disattivato' }}</td>
+          <td>
+            <button class="btn-sm btn-edit" data-milite='{{ m | tojson }}' onclick="editaMilite(this)">Modifica</button>
+            <a href="/tessera/{{ m.id }}" target="_blank" class="btn-sm btn-card">Stampa Tessera</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<footer>Sistema Presenze - {{ associazione }}</footer>
+
+<script>
+  let sortCurrent = "{{ sort_current }}";
+  let sortDir = "{{ sort_dir }}";
+
+  function editaMilite(btn) {
+    const milite = JSON.parse(btn.getAttribute('data-milite'));
+    document.getElementById('form-title').innerText = 'Modifica Milite';
+    document.getElementById('milite_id').value = milite.id;
+    document.getElementById('barcode_id').value = milite.barcode_id;
+    document.getElementById('nome').value = milite.nome;
+    document.getElementById('cognome').value = milite.cognome;
+    document.getElementById('ruolo').value = milite.ruolo;
+    document.getElementById('attivo').checked = milite.attivo === 1;
+    document.getElementById('btn-save').innerText = 'Aggiorna';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function resetForm() {
+    document.getElementById('form-title').innerText = 'Aggiungi Nuovo Milite';
+    document.getElementById('milite-form').reset();
+    document.getElementById('milite_id').value = '';
+    document.getElementById('btn-save').innerText = 'Salva';
+  }
+
+  function ordinaPer(colonna) {
+    let nuovaDir = 'asc';
+    if (sortCurrent === colonna) {
+      nuovaDir = sortDir === 'asc' ? 'desc' : 'asc';
+    }
+    window.location.href = `/militi?sort=${colonna}&dir=${nuovaDir}`;
+  }
+
+  function filtraTabella() {
+    const searchVal = document.getElementById('filter-search').value.toLowerCase().trim();
+    const ruoloVal = document.getElementById('filter-ruolo').value.toLowerCase();
+    const statoVal = document.getElementById('filter-stato').value.toLowerCase();
+
+    const rows = document.querySelectorAll('#militi-table tbody tr');
+
+    rows.forEach(row => {
+      const barcode = row.getAttribute('data-barcode') || '';
+      const cognome = row.getAttribute('data-cognome') || '';
+      const nome = row.getAttribute('data-nome') || '';
+      const ruolo = row.getAttribute('data-ruolo') || '';
+      const stato = row.getAttribute('data-stato') || '';
+
+      const matchSearch = barcode.includes(searchVal) || cognome.includes(searchVal) || nome.includes(searchVal);
+      const matchRuolo = !ruoloVal || ruolo === ruoloVal;
+      const matchStato = !statoVal || stato === statoVal;
+
+      if (matchSearch && matchRuolo && matchStato) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+</script>
+</body>
+</html>

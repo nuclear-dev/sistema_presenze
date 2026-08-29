@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard Presenze - {{ associazione }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .tag-badge {
+      font-size: 0.85em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background-color: #e9ecef;
+      color: #495057;
+      font-weight: bold;
+      display: inline-block;
+      margin: 1px;
+    }
+    .tag-badge-ass {
+      background-color: #fff3bf;
+      color: #856404;
+      border: 1px solid #ffe8a1;
+    }
+    .tag-breakdown {
+      font-size: 0.8em;
+      color: #6c757d;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      align-items: flex-start;
+    }
+
+    /* Stili per giorno corrente ed evidenziatore */
+    th.today-col, td.today-col {
+      background-color: #e7f5ff !important;
+      border-left: 2px solid #339af0 !important;
+      border-right: 2px solid #339af0 !important;
+    }
+    th.today-col {
+      color: #1864ab !important;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">
+    <img src="{{ url_for('static', filename=logo) }}" alt="Logo" class="logo-img">
+    <strong>{{ associazione }}</strong>
+  </div>
+  <nav>
+    <a href="/">Timbratura</a>
+    <a href="/dashboard"><strong>Dashboard Excel</strong></a>
+    <a href="/militi">Anagrafica Militi</a>
+  </nav>
+</div>
+
+<div class="main">
+  <div class="filters">
+    <!-- Switch Rapido del Periodo -->
+    <div class="toggle-group" style="margin-right: 10px;">
+      <button class="toggle-btn active" id="btn-period-week" onclick="setPeriodMode('week')">Settimana</button>
+      <button class="toggle-btn" id="btn-period-month" onclick="setPeriodMode('month')">Mese</button>
+      <button class="toggle-btn" id="btn-period-custom" onclick="setPeriodMode('custom')">Personalizzato</button>
+    </div>
+
+    <div class="field">
+      <label for="da">Da:</label>
+      <input type="date" id="da" onchange="onDateInputChange()">
+    </div>
+    <div class="field">
+      <label for="a">A:</label>
+      <input type="date" id="a" onchange="onDateInputChange()">
+    </div>
+
+    <!-- Filtri di ricerca -->
+    <div class="field">
+      <label for="filter-search">Cerca:</label>
+      <input type="text" id="filter-search" placeholder="Cognome o Nome..." onkeyup="filtraTabella()">
+    </div>
+    <div class="field">
+      <label for="filter-ruolo">Ruolo:</label>
+      <select id="filter-ruolo" onchange="filtraTabella()">
+        <option value="">Tutti</option>
+        <option value="volontario">Volontario</option>
+        <option value="dipendente">Dipendente</option>
+      </select>
+    </div>
+
+    <div class="toggle-group">
+      <button class="toggle-btn active" id="btn-view-hours" onclick="setViewMode('hours')">Visualizza Ore</button>
+      <button class="toggle-btn" id="btn-view-tags" onclick="setViewMode('tags')">Visualizza Turni</button>
+    </div>
+
+    <button onclick="caricaMatrice()">Aggiorna</button>
+    <button class="export" onclick="esportaCSV()">Esporta CSV</button>
+  </div>
+
+  <div class="table-container" id="table-scroll-container">
+    <table id="matrix-table">
+      <thead>
+        <tr id="th-row">
+          <th class="sticky-col sticky-col-1 sortable" onclick="cambiaOrdinamento('cognome')">Cognome <span id="sort-cog-mark">▲</span></th>
+          <th class="sticky-col sticky-col-2 sortable" onclick="cambiaOrdinamento('nome')">Nome <span id="sort-nom-mark"></span></th>
+        </tr>
+      </thead>
+      <tbody id="tb-body">
+        <tr><td colspan="100%">Caricamento...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODALE EDIT TURNO -->
+<div id="editModal" class="modal">
+  <div class="modal-content">
+    <h3>Gestione Presenza</h3>
+    <p id="modal-milite-name" style="font-weight: bold; font-size: 14px; margin-bottom: 2px;"></p>
+    <p id="modal-date" style="color: #6c757d; font-size: 12px; margin-top: 0;"></p>
+
+    <div id="modal-alert" style="color: red; font-size: 11px; display: none; margin-bottom: 8px;"></div>
+    
+    <input type="hidden" id="modal-milite-id">
+    <input type="hidden" id="modal-giorno-rif">
+
+    <div class="modal-grid">
+      <div class="field">
+        <label>Data Inizio:</label>
+        <input type="date" id="modal-giorno-inizio">
+      </div>
+      <div class="field">
+        <label>Ora Inizio:</label>
+        <input type="time" id="modal-ora-inizio" value="08:00">
+      </div>
+    </div>
+
+    <div class="modal-grid">
+      <div class="field">
+        <label>Data Fine:</label>
+        <input type="date" id="modal-giorno-fine">
+      </div>
+      <div class="field">
+        <label>Ora Fine:</label>
+        <input type="time" id="modal-ora-fine" value="14:00">
+      </div>
+    </div>
+
+    <div class="field checkbox-field" style="margin-bottom: 15px; background: #fff3bf; padding: 5px; border-radius: 4px;">
+      <input type="checkbox" id="modal-is-assistenza">
+      <label for="modal-is-assistenza"><strong>ASS - Assistenza Evento</strong></label>
+    </div>
+
+    <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center;">
+      <button class="reset" onclick="chiudiModale()">Annulla</button>
+      
+      <div style="display: flex; gap: 8px;">
+        <button class="danger" id="btn-delete-shift" onclick="eliminaPresenza()">Elimina Ore</button>
+        <button id="btn-save-shift" onclick="salvaPresenzaManuale()">Salva</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>Sistema Presenze - {{ associazione }}</footer>
+
+<script>
+  let ultimiDati = null;
+  let giorniIntervallo = [];
+  let viewMode = 'hours';
+  let sortCurrent = 'cognome';
+  let sortDir = 'asc';
+  let periodMode = 'week';
+
+  function formatISODate(date) {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function setPeriodMode(mode, triggerLoad = true) {
+    periodMode = mode;
+    document.getElementById('btn-period-week').classList.toggle('active', mode === 'week');
+    document.getElementById('btn-period-month').classList.toggle('active', mode === 'month');
+    document.getElementById('btn-period-custom').classList.toggle('active', mode === 'custom');
+
+    const oggi = new Date();
+
+    if (mode === 'week') {
+      const giornoSettimana = oggi.getDay(); // 0 è Domenica
+      const diffLunedis = oggi.getDate() - giornoSettimana + (giornoSettimana === 0 ? -6 : 1);
+      
+      const lunedi = new Date(oggi.setDate(diffLunedis));
+      const domenica = new Date(lunedi);
+      domenica.setDate(lunedi.getDate() + 6);
+
+      document.getElementById('da').value = formatISODate(lunedi);
+      document.getElementById('a').value = formatISODate(domenica);
+    } else if (mode === 'month') {
+      const primoDelMese = new Date(oggi.getFullYear(), oggi.getMonth(), 1);
+      const ultimoDelMese = new Date(oggi.getFullYear(), oggi.getMonth() + 1, 0);
+
+      document.getElementById('da').value = formatISODate(primoDelMese);
+      document.getElementById('a').value = formatISODate(ultimoDelMese);
+    }
+
+    if (triggerLoad && mode !== 'custom') {
+      caricaMatrice();
+    }
+  }
+
+  function onDateInputChange() {
+    setPeriodMode('custom', false);
+  }
+
+  function setViewMode(mode) {
+    viewMode = mode;
+    document.getElementById('btn-view-hours').classList.toggle('active', mode === 'hours');
+    document.getElementById('btn-view-tags').classList.toggle('active', mode === 'tags');
+    renderTable();
+  }
+
+  function cambiaOrdinamento(tipo) {
+    if (sortCurrent === tipo) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortCurrent = tipo;
+      sortDir = 'asc';
+    }
+    const sim = sortDir === 'asc' ? '▲' : '▼';
+    document.getElementById('sort-cog-mark').innerText = sortCurrent === 'cognome' ? sim : '';
+    document.getElementById('sort-nom-mark').innerText = sortCurrent === 'nome' ? sim : '';
+    caricaMatrice();
+  }
+
+  function calcolaGiorni(daStr, aStr) {
+    const lista = [];
+    let curr = new Date(daStr);
+    const end = new Date(aStr);
+    while (curr <= end) {
+      lista.push(formatISODate(curr));
+      curr.setDate(curr.getDate() + 1);
+    }
+    return lista;
+  }
+
+  async function caricaMatrice() {
+    const da = document.getElementById('da').value;
+    const a = document.getElementById('a').value;
+    if (!da || !a) return;
+
+    giorniIntervallo = calcolaGiorni(da, a);
+    
+    try {
+      const res = await fetch(`/api/report-matrix?da=${da}&a=${a}&sort=${sortCurrent}&dir=${sortDir}`);
+      if (!res.ok) throw new Error("Errore recupero dati");
+      ultimiDati = await res.json();
+      renderTable();
+    } catch (e) {
+      document.getElementById('tb-body').innerHTML = `<tr><td colspan="100%" style="color:red">Errore caricamento: ${e.message}</td></tr>`;
+    }
+  }
+
+  function renderTable() {
+    if (!ultimiDati) return;
+    const { militi, mappaTimbrature } = ultimiDati;
+    const oggiStr = formatISODate(new Date());
+
+    const thRow = document.getElementById('th-row');
+    const sim = sortDir === 'asc' ? '▲' : '▼';
+    thRow.innerHTML = `
+      <th class="sticky-col sticky-col-1 sortable" onclick="cambiaOrdinamento('cognome')">Cognome <span id="sort-cog-mark">${sortCurrent === 'cognome' ? sim : ''}</span></th>
+      <th class="sticky-col sticky-col-2 sortable" onclick="cambiaOrdinamento('nome')">Nome <span id="sort-nom-mark">${sortCurrent === 'nome' ? sim : ''}</span></th>
+    `;
+
+    giorniIntervallo.forEach(g => {
+      const gFmt = g.split('-').slice(1).reverse().join('/');
+      const isToday = g === oggiStr;
+      thRow.innerHTML += `<th class="${isToday ? 'today-col' : ''}" ${isToday ? 'id="th-today"' : ''}>${gFmt}</th>`;
+    });
+    
+    thRow.innerHTML += '<th class="total-col">Ore per Tag</th>';
+    thRow.innerHTML += '<th class="total-col">Totale Ore</th>';
+
+    const tbody = document.getElementById('tb-body');
+    tbody.innerHTML = '';
+
+    if (militi.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="100%">Nessun milite presente</td></tr>';
+      return;
+    }
+
+    militi.forEach(m => {
+      const cognome = (m.cognome || '').toLowerCase();
+      const nome = (m.nome || '').toLowerCase();
+      const ruolo = (m.ruolo || '').toLowerCase();
+
+      let htmlRiga = `
+        <tr data-cognome="${cognome}" 
+            data-nome="${nome}" 
+            data-ruolo="${ruolo}">
+          <td class="sticky-col sticky-col-1"><strong>${m.cognome}</strong></td>
+          <td class="sticky-col sticky-col-2">${m.nome}</td>
+      `;
+      let sommaOreMilite = 0;
+      let orePerTag = {}; 
+
+      giorniIntervallo.forEach(g => {
+        const mKey = String(m.id);
+        const listaTurni = mappaTimbrature[mKey] ? mappaTimbrature[mKey][g] : null;
+        const isToday = g === oggiStr;
+
+        if (listaTurni && listaTurni.length > 0) {
+          let oreGiorno = 0;
+          let tagsGiorno = [];
+
+          listaTurni.forEach(t => {
+            const ore = t.ore_totali ? parseFloat(t.ore_totali) : 0;
+            oreGiorno += ore;
+
+            if (t.tag_turni) {
+              const tagList = t.tag_turni.split(',').map(tg => tg.trim()).filter(tg => tg !== '');
+              tagList.forEach(tg => {
+                if (!tagsGiorno.includes(tg)) tagsGiorno.push(tg);
+                orePerTag[tg] = (orePerTag[tg] || 0) + ore;
+              });
+            }
+          });
+
+          sommaOreMilite += oreGiorno;
+          
+          let contenutoCella = '';
+          if (viewMode === 'hours') {
+            contenutoCella = `<span class="hours">${oreGiorno.toFixed(1)}h</span>`;
+          } else {
+            contenutoCella = `<div class="tag-list">${tagsGiorno.map(t => `<span class="tag ${t === 'ASS' ? 'tag-ass' : ''}">${t}</span>`).join('')}</div>`;
+          }
+
+          htmlRiga += `
+            <td class="cell-interactive ${isToday ? 'today-col' : ''}" onclick="apriModaleEdita(${m.id}, '${m.cognome} ${m.nome}', '${g}')" title="Modifica presenza">
+              ${contenutoCella}
+            </td>`;
+        } else {
+          htmlRiga += `
+            <td class="cell-interactive ${isToday ? 'today-col' : ''}" onclick="apriModaleEdita(${m.id}, '${m.cognome} ${m.nome}', '${g}')" title="Aggiungi turno">
+              <span class="empty" style="color:#ccc;">+</span>
+            </td>`;
+        }
+      });
+
+      let tagBreakdownHtml = '<div class="tag-breakdown">';
+      const keysTags = Object.keys(orePerTag);
+      if (keysTags.length > 0) {
+        keysTags.forEach(tg => {
+          const isAss = tg === 'ASS';
+          tagBreakdownHtml += `<div><span class="tag-badge ${isAss ? 'tag-badge-ass' : ''}">${tg}</span> <strong>${orePerTag[tg].toFixed(1)}h</strong></div>`;
+        });
+      } else {
+        tagBreakdownHtml += '<span>-</span>';
+      }
+      tagBreakdownHtml += '</div>';
+
+      htmlRiga += `<td class="total-col">${tagBreakdownHtml}</td>`;
+      htmlRiga += `<td class="total-col"><strong>${sommaOreMilite.toFixed(1)}h</strong></td></tr>`;
+      tbody.innerHTML += htmlRiga;
+    });
+
+    filtraTabella();
+    centraGiornoCorrente();
+  }
+
+  function centraGiornoCorrente() {
+    const todayElem = document.getElementById('th-today');
+    const container = document.getElementById('table-scroll-container');
+
+    if (todayElem && container) {
+      const scrollPos = todayElem.offsetLeft - (container.clientWidth / 2) + (todayElem.clientWidth / 2);
+      container.scrollTo({ left: scrollPos, behavior: 'smooth' });
+    }
+  }
+
+  function filtraTabella() {
+    const searchVal = document.getElementById('filter-search').value.toLowerCase().trim();
+    const ruoloVal = document.getElementById('filter-ruolo').value.toLowerCase();
+
+    const rows = document.querySelectorAll('#matrix-table tbody tr');
+
+    rows.forEach(row => {
+      const cognome = row.getAttribute('data-cognome') || '';
+      const nome = row.getAttribute('data-nome') || '';
+      const ruolo = row.getAttribute('data-ruolo') || '';
+
+      const matchSearch = cognome.includes(searchVal) || nome.includes(searchVal);
+      const matchRuolo = !ruoloVal || ruolo === ruoloVal;
+
+      if (matchSearch && matchRuolo) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  function apriModaleEdita(militeId, nomeCompleto, giorno) {
+    document.getElementById('modal-alert').style.display = 'none';
+    document.getElementById('modal-milite-id').value = militeId;
+    document.getElementById('modal-giorno-rif').value = giorno;
+    document.getElementById('modal-milite-name').innerText = nomeCompleto;
+    document.getElementById('modal-date').innerText = `Riferimento inizio: ${giorno.split('-').reverse().join('/')}`;
+    
+    document.getElementById('modal-giorno-inizio').value = giorno;
+    document.getElementById('modal-giorno-fine').value = giorno;
+    document.getElementById('modal-ora-inizio').value = "08:00";
+    document.getElementById('modal-ora-fine').value = "14:00";
+    document.getElementById('modal-is-assistenza').checked = false;
+
+    const mKey = String(militeId);
+    const haTurni = ultimiDati && ultimiDati.mappaTimbrature && 
+                    ultimiDati.mappaTimbrature[mKey] && 
+                    ultimiDati.mappaTimbrature[mKey][giorno] &&
+                    ultimiDati.mappaTimbrature[mKey][giorno].length > 0;
+
+    if (haTurni) {
+      const t = ultimiDati.mappaTimbrature[mKey][giorno][0];
+      if (t.inizio_turno) {
+        const dtIn = t.inizio_turno.split('T');
+        document.getElementById('modal-giorno-inizio').value = dtIn[0];
+        document.getElementById('modal-ora-inizio').value = dtIn[1].substring(0, 5);
+      }
+      if (t.fine_turno) {
+        const dtFin = t.fine_turno.split('T');
+        document.getElementById('modal-giorno-fine').value = dtFin[0];
+        document.getElementById('modal-ora-fine').value = dtFin[1].substring(0, 5);
+      }
+      if (t.tag_turni === "ASS") {
+        document.getElementById('modal-is-assistenza').checked = true;
+      }
+    }
+
+    const btnDelete = document.getElementById('btn-delete-shift');
+    btnDelete.style.display = haTurni ? 'inline-block' : 'none';
+
+    document.getElementById('editModal').style.display = 'flex';
+  }
+
+  function chiudiModale() {
+    document.getElementById('editModal').style.display = 'none';
+  }
+
+  async function salvaPresenzaManuale() {
+    const btnSalva = document.getElementById('btn-save-shift');
+    const alertBox = document.getElementById('modal-alert');
+    
+    if (btnSalva.disabled) return;
+    btnSalva.disabled = true;
+    btnSalva.innerText = "Salvataggio...";
+
+    const milite_id = document.getElementById('modal-milite-id').value;
+    const giorno_inizio = document.getElementById('modal-giorno-inizio').value;
+    const ora_inizio = document.getElementById('modal-ora-inizio').value;
+    const giorno_fine = document.getElementById('modal-giorno-fine').value;
+    const ora_fine = document.getElementById('modal-ora-fine').value;
+    const is_assistenza = document.getElementById('modal-is-assistenza').checked;
+
+    try {
+      const res = await fetch('/api/timbratura/salva-manuale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ milite_id, giorno_inizio, ora_inizio, giorno_fine, ora_fine, is_assistenza })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        chiudiModale();
+        await caricaMatrice();
+      } else {
+        alertBox.innerText = data.errore || "Errore durante il salvataggio.";
+        alertBox.style.display = 'block';
+      }
+    } catch (e) {
+      alertBox.innerText = "Errore di connessione al server.";
+      alertBox.style.display = 'block';
+    } finally {
+      btnSalva.disabled = false;
+      btnSalva.innerText = "Salva";
+    }
+  }
+
+  async function eliminaPresenza() {
+    if (!confirm("Vuoi davvero cancellare le ore registrate per questo giorno?")) return;
+
+    const btnDelete = document.getElementById('btn-delete-shift');
+    btnDelete.disabled = true;
+
+    const milite_id = document.getElementById('modal-milite-id').value;
+    const giorno = document.getElementById('modal-giorno-rif').value;
+
+    try {
+      const res = await fetch('/api/timbratura/elimina', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ milite_id, giorno })
+      });
+
+      if (res.ok) {
+        chiudiModale();
+        await caricaMatrice();
+      } else {
+        alert("Errore durante l'eliminazione");
+      }
+    } catch (e) {
+      alert("Errore di rete");
+    } finally {
+      btnDelete.disabled = false;
+    }
+  }
+
+  function esportaCSV() {
+    if (!ultimiDati) return;
+    let csv = 'Cognome,Nome,' + giorniIntervallo.join(',') + ',Dettaglio Tag,Totale Ore\n';
+
+    ultimiDati.militi.forEach(m => {
+      let riga = `"${m.cognome}","${m.nome}"`;
+      let somma = 0;
+      let orePerTag = {};
+
+      giorniIntervallo.forEach(g => {
+        const mKey = String(m.id);
+        const turni = ultimiDati.mappaTimbrature[mKey] ? ultimiDati.mappaTimbrature[mKey][g] : null;
+        if (turni) {
+          let oreG = 0;
+          turni.forEach(t => {
+            const ore = t.ore_totali || 0;
+            oreG += ore;
+
+            if (t.tag_turni) {
+              const tagList = t.tag_turni.split(',').map(tg => tg.trim()).filter(tg => tg !== '');
+              tagList.forEach(tg => {
+                orePerTag[tg] = (orePerTag[tg] || 0) + ore;
+              });
+            }
+          });
+
+          somma += oreG;
+          riga += `,"${oreG.toFixed(1)}h"`;
+        } else {
+          riga += ',"-"';
+        }
+      });
+
+      let tagSummaryCSV = Object.keys(orePerTag).map(tg => `${tg}: ${orePerTag[tg].toFixed(1)}h`).join(' | ');
+      riga += `,"${tagSummaryCSV || '-'}",${somma.toFixed(1)}\n`;
+      csv += riga;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `report_presenze_${document.getElementById('da').value}.csv`;
+    a.click();
+  }
+
+  // Inizializzazione predefinita: Settimana corrente
+  setPeriodMode('week');
+</script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Tessera - {{ milite.cognome }} {{ milite.nome }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+</head>
+<body style="padding-top: 40px;">
+
+<div class="badge-card">
+  <div class="card-header">
+    <img src="{{ url_for('static', filename=logo) }}" alt="Logo" class="card-logo-img">
+    <div class="card-assoc">{{ associazione }}</div>
+  </div>
+
+  <div class="card-body">
+    <div class="card-name">{{ milite.cognome }} {{ milite.nome }}</div>
+    <div class="card-role">{{ milite.ruolo }}</div>
+  </div>
+
+  <div class="card-footer">
+    <svg id="barcode"></svg>
+  </div>
+</div>
+
+<div class="no-print">
+  <button onclick="window.print()">Stampa Tessera</button>
+  <button onclick="window.close()" class="reset">Chiudi</button>
+</div>
+
+<script>
+  JsBarcode("#barcode", "{{ milite.barcode_id }}", {
+    format: "CODE128",
+    height: 35,
+    fontSize: 10,
+    margin: 0
+  });
+</script>
+</body>
+</html>

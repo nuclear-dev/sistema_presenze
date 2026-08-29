@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Timbratura - {{ associazione }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="header">
+  <div class="brand">
+    <img src="{{ url_for('static', filename=logo) }}" alt="Logo" class="logo-img">
+    <strong>{{ associazione }}</strong>
+  </div>
+  <nav>
+    <a href="/"><strong>Timbratura</strong></a>
+    <a href="/dashboard">Dashboard Excel</a>
+    <a href="/militi">Anagrafica Militi</a>
+  </nav>
+</div>
+
+<div class="box">
+  <h2>Timbratura Presenze</h2>
+  <label for="barcode">**BARCODE**</label>
+  <input type="text" id="barcode" placeholder="Scansiona il badge o inserisci la matricola..." autofocus autocomplete="off">
+  
+  <div id="feedback" class="status"></div>
+</div>
+
+<footer>Sistema Presenze - {{ associazione }}</footer>
+
+<script>
+  const input = document.getElementById('barcode');
+  const feedback = document.getElementById('feedback');
+
+  document.addEventListener('click', () => input.focus());
+
+  input.addEventListener('change', async () => {
+    const barcode = input.value.trim();
+    if (!barcode) return;
+
+    try {
+      const res = await fetch('/api/timbra', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        showFeedback(`${data.milite}: ${data.messaggio}`, 'success');
+      } else {
+        showFeedback(data.errore || 'Errore durante la timbratura', 'error');
+      }
+    } catch (err) {
+      showFeedback('Errore di connessione al server', 'error');
+    }
+
+    input.value = '';
+  });
+
+  function showFeedback(text, type) {
+    feedback.innerText = text;
+    feedback.className = `status ${type}`;
+    feedback.style.display = 'block';
+    setTimeout(() => { feedback.style.display = 'none'; }, 4500);
+  }
+</script>
+</body>
+</html>
