@@ -1,8 +1,5 @@
 @import url('https://rsms.me/inter/inter.css');
 
-body {
-    font-family: 'Inter', sans-serif;
-}
 :root {
   --secondary-color: #6c757d;
   --success-color: #198754;
@@ -15,7 +12,7 @@ body {
 }
 
 body {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Verdana', sans-serif;
   background-color: var(--bg-color);
   color: var(--text-color);
   margin: 0;
@@ -59,6 +56,10 @@ h2 {
   display: flex;
   align-items: center;
   gap: 15px;
+}
+
+.brand strong{
+    color: var(--primary-color);
 }
 
 .logo-img {
