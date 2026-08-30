@@ -227,10 +227,12 @@ th.sortable:hover {
   padding: 12px;
   font-size: 18px;
   margin-bottom: 20px;
+  margin-top: 20px;
 }
 
 #barcode{
     font-size: 1rem;
+    text-align: center;
 }
 
 .status {
@@ -334,7 +336,6 @@ th.sticky-col { z-index: 3; background: #f1f3f5; font-weight: 600; }
   height: 53.9mm;
   background: #ffffff;
   border: 1px solid #ccc;
-  border-radius: 4mm;
   padding: 4mm;
   box-sizing: border-box;
   display: flex;
