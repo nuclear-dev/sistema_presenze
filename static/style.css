@@ -386,6 +386,16 @@ svg#barcode { width: 100%; height: 14mm; }
   width: 100%;
 }
 
+.modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+button.danger { background: #dc3545; }
+button.danger:hover { background: #b02a37; }
+
 @media print {
   body { background: none; padding: 0; margin: 0; }
   .no-print, .header, footer { display: none !important; }
