@@ -10,7 +10,7 @@
 <div class="header">
   <div class="brand">
     <img src="{{ url_for('static', filename=logo) }}" alt="Logo" class="logo-img">
-    <strong>{{ associazione }}</strong>
+    <strong>Sistema Presenze</strong>
   </div>
   <nav>
     <a href="/"><strong>Timbratura</strong></a>
@@ -21,13 +21,13 @@
 
 <div class="box">
   <h2>Timbratura Presenze</h2>
-  <label for="barcode">Avvicina la tessera al lettore per iniziare o terminare il turno.</label>
-  <input type="text" id="barcode" placeholder="CODICE IDENTIFICATIVO" autofocus autocomplete="off">
+  <label for="barcode">Scansiona il codice a barre.</label>
+  <input type="text" id="barcode" placeholder="*****" autofocus autocomplete="off">
   
   <div id="feedback" class="status"></div>
 </div>
 
-<footer>Sistema Presenze - {{ associazione }}</footer>
+<footer>{{ associazione }}</footer>
 
 <script>
   const input = document.getElementById('barcode');
