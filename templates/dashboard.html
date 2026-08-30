@@ -113,50 +113,67 @@
 
 <!-- MODALE EDIT TURNO -->
 <div id="editModal" class="modal">
-  <div class="modal-content">
+  <div class="modal-content" style="max-width: 420px;">
     <h3>Gestione Presenza</h3>
     <p id="modal-milite-name" style="font-weight: bold; font-size: 14px; margin-bottom: 2px;"></p>
-    <p id="modal-date" style="color: #6c757d; font-size: 12px; margin-top: 0;"></p>
+    <p id="modal-date" style="color: #6c757d; font-size: 12px; margin-top: 0; margin-bottom: 12px;"></p>
 
     <div id="modal-alert" style="color: red; font-size: 11px; display: none; margin-bottom: 8px;"></div>
-    
+
     <input type="hidden" id="modal-milite-id">
     <input type="hidden" id="modal-giorno-rif">
+    <input type="hidden" id="modal-turno-id-corrente">
 
-    <div class="modal-grid">
-      <div class="field">
-        <label>Data Inizio:</label>
-        <input type="date" id="modal-giorno-inizio">
+    <!-- Lista dei turni gia' registrati per questo giorno -->
+    <div id="lista-turni-giorno" style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;"></div>
+
+    <button type="button" id="btn-nuovo-turno" onclick="mostraFormNuovoTurno()"
+      style="width: 100%; background: var(--success-color); margin-bottom: 12px;">
+      + Aggiungi turno in questa data
+    </button>
+
+    <!-- Form di inserimento/modifica di un singolo turno -->
+    <div id="form-turno" style="display: none; border-top: 1px solid #eee; padding-top: 12px;">
+      <p id="form-turno-titolo" style="font-weight: 600; font-size: 13px; margin: 0 0 8px 0;"></p>
+
+      <div class="modal-grid">
+        <div class="field">
+          <label>Data Inizio:</label>
+          <input type="date" id="modal-giorno-inizio">
+        </div>
+        <div class="field">
+          <label>Ora Inizio:</label>
+          <input type="time" id="modal-ora-inizio" value="08:00">
+        </div>
       </div>
-      <div class="field">
-        <label>Ora Inizio:</label>
-        <input type="time" id="modal-ora-inizio" value="08:00">
+
+      <div class="modal-grid">
+        <div class="field">
+          <label>Data Fine:</label>
+          <input type="date" id="modal-giorno-fine">
+        </div>
+        <div class="field">
+          <label>Ora Fine:</label>
+          <input type="time" id="modal-ora-fine" value="14:00">
+        </div>
+      </div>
+
+      <div class="field checkbox-field" style="margin: 10px 0 15px 0; background: #fff3bf; padding: 5px; border-radius: 4px;">
+        <input type="checkbox" id="modal-is-assistenza">
+        <label for="modal-is-assistenza"><strong>ASS - Assistenza Evento</strong></label>
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center;">
+        <button type="button" class="reset" onclick="nascondiFormTurno()">Annulla</button>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="danger" id="btn-delete-shift" onclick="eliminaPresenza()" style="display:none;">Elimina Turno</button>
+          <button type="button" id="btn-save-shift" onclick="salvaPresenzaManuale()">Salva</button>
+        </div>
       </div>
     </div>
 
-    <div class="modal-grid">
-      <div class="field">
-        <label>Data Fine:</label>
-        <input type="date" id="modal-giorno-fine">
-      </div>
-      <div class="field">
-        <label>Ora Fine:</label>
-        <input type="time" id="modal-ora-fine" value="14:00">
-      </div>
-    </div>
-
-    <div class="field checkbox-field" style="margin-bottom: 15px; background: #fff3bf; padding: 5px; border-radius: 4px;">
-      <input type="checkbox" id="modal-is-assistenza">
-      <label for="modal-is-assistenza"><strong>ASS - Assistenza Evento</strong></label>
-    </div>
-
-    <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center;">
-      <button class="reset" onclick="chiudiModale()">Annulla</button>
-      
-      <div style="display: flex; gap: 8px;">
-        <button class="danger" id="btn-delete-shift" onclick="eliminaPresenza()">Elimina Ore</button>
-        <button id="btn-save-shift" onclick="salvaPresenzaManuale()">Salva</button>
-      </div>
+    <div style="margin-top: 14px; text-align: right;">
+      <button type="button" class="reset" onclick="chiudiModale()">Chiudi</button>
     </div>
   </div>
 </div>
@@ -170,6 +187,7 @@
   let sortCurrent = 'cognome';
   let sortDir = 'asc';
   let periodMode = 'week';
+  let turniGiornoCorrenti = [];
 
   function formatISODate(date) {
     const yyyy = date.getFullYear();
@@ -337,12 +355,12 @@
           }
 
           htmlRiga += `
-            <td class="cell-interactive ${isToday ? 'today-col' : ''}" onclick="apriModaleEdita(${m.id}, '${m.cognome} ${m.nome}', '${g}')" title="Modifica presenza">
+            <td class="cell-interactive ${isToday ? 'today-col' : ''}" data-milite-id="${m.id}" data-giorno="${g}" title="Modifica presenze (${listaTurni.length} turni)">
               ${contenutoCella}
             </td>`;
         } else {
           htmlRiga += `
-            <td class="cell-interactive ${isToday ? 'today-col' : ''}" onclick="apriModaleEdita(${m.id}, '${m.cognome} ${m.nome}', '${g}')" title="Aggiungi turno">
+            <td class="cell-interactive ${isToday ? 'today-col' : ''}" data-milite-id="${m.id}" data-giorno="${g}" title="Aggiungi turno">
               <span class="empty" style="color:#ccc;">+</span>
             </td>`;
         }
@@ -406,41 +424,85 @@
     document.getElementById('modal-milite-id').value = militeId;
     document.getElementById('modal-giorno-rif').value = giorno;
     document.getElementById('modal-milite-name').innerText = nomeCompleto;
-    document.getElementById('modal-date').innerText = `Riferimento inizio: ${giorno.split('-').reverse().join('/')}`;
-    
-    document.getElementById('modal-giorno-inizio').value = giorno;
-    document.getElementById('modal-giorno-fine').value = giorno;
-    document.getElementById('modal-ora-inizio').value = "08:00";
-    document.getElementById('modal-ora-fine').value = "14:00";
-    document.getElementById('modal-is-assistenza').checked = false;
+    document.getElementById('modal-date').innerText = `Riferimento: ${giorno.split('-').reverse().join('/')}`;
 
     const mKey = String(militeId);
-    const haTurni = ultimiDati && ultimiDati.mappaTimbrature && 
-                    ultimiDati.mappaTimbrature[mKey] && 
-                    ultimiDati.mappaTimbrature[mKey][giorno] &&
-                    ultimiDati.mappaTimbrature[mKey][giorno].length > 0;
+    turniGiornoCorrenti = (ultimiDati && ultimiDati.mappaTimbrature &&
+                           ultimiDati.mappaTimbrature[mKey] &&
+                           ultimiDati.mappaTimbrature[mKey][giorno]) ?
+                           ultimiDati.mappaTimbrature[mKey][giorno] : [];
 
-    if (haTurni) {
-      const t = ultimiDati.mappaTimbrature[mKey][giorno][0];
-      if (t.inizio_turno) {
-        const dtIn = t.inizio_turno.split('T');
-        document.getElementById('modal-giorno-inizio').value = dtIn[0];
-        document.getElementById('modal-ora-inizio').value = dtIn[1].substring(0, 5);
-      }
-      if (t.fine_turno) {
-        const dtFin = t.fine_turno.split('T');
-        document.getElementById('modal-giorno-fine').value = dtFin[0];
-        document.getElementById('modal-ora-fine').value = dtFin[1].substring(0, 5);
-      }
-      if (t.tag_turni === "ASS") {
-        document.getElementById('modal-is-assistenza').checked = true;
-      }
+    renderListaTurniGiorno();
+    nascondiFormTurno();
+    document.getElementById('editModal').style.display = 'flex';
+  }
+
+  // Disegna la lista dei turni gia' registrati per il giorno corrente, ognuno
+  // con i propri pulsanti Modifica/Elimina, cosi' e' sempre chiaro quanti
+  // turni ci sono e si puo' aggiungerne quanti se ne vuole.
+  function renderListaTurniGiorno() {
+    const contenitore = document.getElementById('lista-turni-giorno');
+
+    if (turniGiornoCorrenti.length === 0) {
+      contenitore.innerHTML = '<p style="color:#6c757d; font-size:12px; margin: 0 0 4px 0;">Nessun turno registrato in questo giorno.</p>';
+      return;
     }
 
-    const btnDelete = document.getElementById('btn-delete-shift');
-    btnDelete.style.display = haTurni ? 'inline-block' : 'none';
+    contenitore.innerHTML = turniGiornoCorrenti.map((t, index) => {
+      const oraIn = t.inizio_turno ? t.inizio_turno.split('T')[1].substring(0, 5) : '--:--';
+      const oraFin = t.fine_turno ? t.fine_turno.split('T')[1].substring(0, 5) : 'in corso';
+      const ore = t.ore_totali ? `${parseFloat(t.ore_totali).toFixed(1)}h` : '';
+      const isAss = t.tag_turni === 'ASS';
+      return `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; border:1px solid var(--border-color); border-radius:4px; padding:6px 8px; font-size:12px;">
+          <span>
+            <strong>Turno ${index + 1}${isAss ? ' <span class="tag tag-ass">ASS</span>' : ''}:</strong>
+            ${oraIn} - ${oraFin} ${ore ? `(${ore})` : ''}
+          </span>
+          <button type="button" class="btn-sm btn-edit" onclick="mostraFormModificaTurno('${t.id}')">Modifica</button>
+        </div>`;
+    }).join('');
+  }
 
-    document.getElementById('editModal').style.display = 'flex';
+  function mostraFormNuovoTurno() {
+    const giorno = document.getElementById('modal-giorno-rif').value;
+    document.getElementById('modal-turno-id-corrente').value = '';
+    document.getElementById('form-turno-titolo').innerText = 'Nuovo turno';
+    document.getElementById('modal-giorno-inizio').value = giorno;
+    document.getElementById('modal-giorno-fine').value = giorno;
+    document.getElementById('modal-ora-inizio').value = '08:00';
+    document.getElementById('modal-ora-fine').value = '14:00';
+    document.getElementById('modal-is-assistenza').checked = false;
+    document.getElementById('btn-delete-shift').style.display = 'none';
+    document.getElementById('modal-alert').style.display = 'none';
+    document.getElementById('form-turno').style.display = 'block';
+  }
+
+  function mostraFormModificaTurno(timbraturaId) {
+    const turno = turniGiornoCorrenti.find(t => String(t.id) === String(timbraturaId));
+    if (!turno) return;
+
+    document.getElementById('modal-turno-id-corrente').value = turno.id;
+    document.getElementById('form-turno-titolo').innerText = 'Modifica turno';
+
+    if (turno.inizio_turno) {
+      const dtIn = turno.inizio_turno.split('T');
+      document.getElementById('modal-giorno-inizio').value = dtIn[0];
+      document.getElementById('modal-ora-inizio').value = dtIn[1].substring(0, 5);
+    }
+    if (turno.fine_turno) {
+      const dtFin = turno.fine_turno.split('T');
+      document.getElementById('modal-giorno-fine').value = dtFin[0];
+      document.getElementById('modal-ora-fine').value = dtFin[1].substring(0, 5);
+    }
+    document.getElementById('modal-is-assistenza').checked = (turno.tag_turni === 'ASS');
+    document.getElementById('btn-delete-shift').style.display = 'inline-block';
+    document.getElementById('modal-alert').style.display = 'none';
+    document.getElementById('form-turno').style.display = 'block';
+  }
+
+  function nascondiFormTurno() {
+    document.getElementById('form-turno').style.display = 'none';
   }
 
   function chiudiModale() {
@@ -461,19 +523,28 @@
     const giorno_fine = document.getElementById('modal-giorno-fine').value;
     const ora_fine = document.getElementById('modal-ora-fine').value;
     const is_assistenza = document.getElementById('modal-is-assistenza').checked;
+    const timbratura_id = document.getElementById('modal-turno-id-corrente').value || null;
 
     try {
       const res = await fetch('/api/timbratura/salva-manuale', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ milite_id, giorno_inizio, ora_inizio, giorno_fine, ora_fine, is_assistenza })
+        body: JSON.stringify({ timbratura_id, milite_id, giorno_inizio, ora_inizio, giorno_fine, ora_fine, is_assistenza })
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        chiudiModale();
         await caricaMatrice();
+        // Riapre la modale sullo stesso giorno per mostrare subito la lista aggiornata
+        const giorno = document.getElementById('modal-giorno-rif').value;
+        const mKey = String(milite_id);
+        turniGiornoCorrenti = (ultimiDati && ultimiDati.mappaTimbrature &&
+                               ultimiDati.mappaTimbrature[mKey] &&
+                               ultimiDati.mappaTimbrature[mKey][giorno]) ?
+                               ultimiDati.mappaTimbrature[mKey][giorno] : [];
+        renderListaTurniGiorno();
+        nascondiFormTurno();
       } else {
         alertBox.innerText = data.errore || "Errore durante il salvataggio.";
         alertBox.style.display = 'block';
@@ -488,24 +559,32 @@
   }
 
   async function eliminaPresenza() {
-    if (!confirm("Vuoi davvero cancellare le ore registrate per questo giorno?")) return;
+    const timbratura_id = document.getElementById('modal-turno-id-corrente').value;
+    if (!timbratura_id) return;
+
+    if (!confirm("Vuoi davvero cancellare questo turno?")) return;
 
     const btnDelete = document.getElementById('btn-delete-shift');
     btnDelete.disabled = true;
-
-    const milite_id = document.getElementById('modal-milite-id').value;
-    const giorno = document.getElementById('modal-giorno-rif').value;
 
     try {
       const res = await fetch('/api/timbratura/elimina', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ milite_id, giorno })
+        body: JSON.stringify({ timbratura_id })
       });
 
       if (res.ok) {
-        chiudiModale();
         await caricaMatrice();
+        const giorno = document.getElementById('modal-giorno-rif').value;
+        const militeId = document.getElementById('modal-milite-id').value;
+        const mKey = String(militeId);
+        turniGiornoCorrenti = (ultimiDati && ultimiDati.mappaTimbrature &&
+                               ultimiDati.mappaTimbrature[mKey] &&
+                               ultimiDati.mappaTimbrature[mKey][giorno]) ?
+                               ultimiDati.mappaTimbrature[mKey][giorno] : [];
+        renderListaTurniGiorno();
+        nascondiFormTurno();
       } else {
         alert("Errore durante l'eliminazione");
       }
@@ -561,6 +640,21 @@
     a.download = `report_presenze_${document.getElementById('da').value}.csv`;
     a.click();
   }
+
+  // Delegazione click sulle celle della matrice: usa data-attributes invece di
+  // inserire nome/cognome direttamente in un onclick, cosi' apostrofi o virgolette
+  // nei nomi (es. "D'Angelo") non rompono piu' l'apertura della modale.
+  document.getElementById('tb-body').addEventListener('click', function(e) {
+    const cell = e.target.closest('td[data-milite-id]');
+    if (!cell) return;
+
+    const militeId = parseInt(cell.getAttribute('data-milite-id'), 10);
+    const giorno = cell.getAttribute('data-giorno');
+    const milite = ultimiDati && ultimiDati.militi ? ultimiDati.militi.find(m => m.id === militeId) : null;
+    const nomeCompleto = milite ? `${milite.cognome} ${milite.nome}` : '';
+
+    apriModaleEdita(militeId, nomeCompleto, giorno);
+  });
 
   // Inizializzazione predefinita: Settimana corrente
   setPeriodMode('week');
