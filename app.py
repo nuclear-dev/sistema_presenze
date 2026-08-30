@@ -42,13 +42,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Fasce espresse in minuti da inizio giornata (0..1440) e durata teorica
+# Fasce espresse in minuti a partire da inizio giornata (0..1440)
 FASCE = [
-    {'code': 'M', 'nome': 'Mattina',    'inizio': 7 * 60,  'fine': 13 * 60, 'durata': 6 * 60},  # 07:00 - 13:00 (6h)
-    {'code': 'I', 'nome': 'Infraturno', 'inizio': 12 * 60, 'fine': 16 * 60, 'durata': 4 * 60},  # 12:00 - 16:00 (4h)
-    {'code': 'P', 'nome': 'Pomeriggio', 'inizio': 15 * 60, 'fine': 20 * 60, 'durata': 5 * 60},  # 15:00 - 20:00 (5h)
-    {'code': 'S', 'nome': 'Sera',       'inizio': 20 * 60, 'fine': 23 * 60, 'durata': 3 * 60},  # 20:00 - 23:00 (3h)
-    {'code': 'N', 'nome': 'Notte',      'inizio': 23 * 60, 'fine': 31 * 60, 'durata': 8 * 60}   # 23:00 - 07:00 (8h)
+    {'code': 'M', 'nome': 'Mattina',    'inizio': 7 * 60,  'fine': 13 * 60},
+    {'code': 'I', 'nome': 'Infraturno', 'inizio': 12 * 60, 'fine': 16 * 60},
+    {'code': 'P', 'nome': 'Pomeriggio', 'inizio': 15 * 60, 'fine': 20 * 60},
+    {'code': 'S', 'nome': 'Sera',       'inizio': 20 * 60, 'fine': 23 * 60},
+    {'code': 'N', 'nome': 'Notte',      'inizio': 23 * 60, 'fine': (24 + 7) * 60} # 23:00 - 07:00 (31h)
 ]
 
 def calcola_turno_e_tag(inizio_iso, fine_iso, is_assistenza=False):
@@ -64,66 +64,22 @@ def calcola_turno_e_tag(inizio_iso, fine_iso, is_assistenza=False):
     if is_assistenza:
         return ore, "ASS"
 
-    # Definizione precisa delle fasce orarie relative al giorno d'inizio
-    # (Le ore oltre le 24:00 sono espresse su base temporale reale)
-    giorno_base = d_inizio.date()
-    
-    fasce_reali = [
-        {'code': 'M', 'inizio': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=7),  'fine': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=13), 'durata_h': 6.0},
-        {'code': 'I', 'inizio': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=12), 'fine': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=16), 'durata_h': 4.0},
-        {'code': 'P', 'inizio': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=15), 'fine': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=20), 'durata_h': 5.0},
-        {'code': 'S', 'inizio': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=20), 'fine': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=23), 'durata_h': 3.0},
-        {'code': 'N', 'inizio': datetime.combine(giorno_base, datetime.min.time()) + timedelta(hours=23), 'fine': datetime.combine(giorno_base, datetime.min.time()) + timedelta(days=1, hours=7), 'durata_h': 8.0}
-    ]
+    in_min = d_inizio.hour * 60 + d_inizio.minute
+    durata_minuti = int(diff_sec // 60)
+    fine_min = in_min + durata_minuti
 
-    valutazioni = []
+    tags = []
+    for f in FASCE:
+        sovrapposizione = min(fine_min, f['fine']) - max(in_min, f['inizio'])
+        durata_fascia = f['fine'] - f['inizio']
+        # Una fascia viene taggata solo se il turno la copre per almeno il 50%
+        # della sua durata (non basta piu' un semplice sconfinamento di pochi
+        # minuti in una fascia adiacente, es. un turno 8-13 non deve prendere
+        # anche il tag Infraturno solo perche' tocca 12-13).
+        if sovrapposizione >= durata_fascia * 0.5:
+            tags.append(f['code'])
 
-    for f in fasce_reali:
-        # Calcolo dell'intersezione effettiva tra l'intervallo lavorato e la fascia
-        start_overlap = max(d_inizio, f['inizio'])
-        end_overlap = min(d_fine, f['fine'])
-        
-        overlap_sec = (end_overlap - start_overlap).total_seconds()
-        
-        if overlap_sec > 0:
-            ore_overlap = overlap_sec / 3600.0
-            copertura_fascia = ore_overlap / f['durata_h']
-            
-            valutazioni.append({
-                'code': f['code'],
-                'ore_overlap': ore_overlap,
-                'copertura_fascia': copertura_fascia
-            })
-
-    if not valutazioni:
-        return ore, ""
-
-    # Se un solo turno ha almeno il 65% di copertura e gli altri sono marginali (<40%),
-    # allora è un turno singolo con sforamento/tolleranza (es. 08:00 - 13:30).
-    turni_rilevanti = [v for v in valutazioni if v['copertura_fascia'] >= 0.65]
-    
-    if len(turni_rilevanti) == 1:
-        # Verifichiamo che non ci siano altri turni ugualmente importanti
-        altri = [v for v in valutazioni if v['code'] != turni_rilevanti[0]['code'] and v['copertura_fascia'] >= 0.50]
-        if not altri:
-            return ore, turni_rilevanti[0]['code']
-
-    # Se sono stati svolti più turni significativi (es. 20:00 - 07:00 copre sia S che N),
-    # selezioniamo tutti i turni con almeno il 60% di copertura della propria fascia
-    turni_multipli = [v['code'] for v in valutazioni if v['copertura_fascia'] >= 0.60]
-
-    if turni_multipli:
-        return ore, ", ".join(turni_multipli)
-
-    # Fallback per turni brevi o parziali (almeno 1.5 ore di presenza nella fascia)
-    tags_fallback = [v['code'] for v in valutazioni if v['ore_overlap'] >= 1.5]
-    
-    if tags_fallback:
-        return ore, ", ".join(tags_fallback)
-
-    # Se nulla supera 1.5h, restituisce il turno con più ore di sovrapposizione
-    valutazioni.sort(key=lambda x: x['ore_overlap'], reverse=True)
-    return ore, valutazioni[0]['code']
+    return ore, ", ".join(tags)
 
 @app.route('/')
 def index():
@@ -276,6 +232,7 @@ def report_matrix():
 @app.route('/api/timbratura/salva-manuale', methods=['POST'])
 def salva_timbratura_manuale():
     data = request.json or {}
+    timbratura_id = data.get('timbratura_id') # ID per aggiornare un turno esistente
     milite_id = data.get('milite_id')
     giorno_inizio = data.get('giorno_inizio')
     ora_inizio = data.get('ora_inizio')
@@ -307,16 +264,17 @@ def salva_timbratura_manuale():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Sovrascrive eventuali registrazioni nello stesso giorno prima di inserire
-        cursor.execute('''
-            DELETE FROM timbrature 
-            WHERE milite_id = ? AND strftime('%Y-%m-%d', inizio_turno) = ?
-        ''', (milite_id, giorno_inizio))
-
-        cursor.execute('''
-            INSERT INTO timbrature (milite_id, inizio_turno, fine_turno, ore_totali, tag_turni)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (milite_id, dt_inizio_iso, dt_fine_iso, ore, tags))
+        if timbratura_id:
+            cursor.execute('''
+                UPDATE timbrature 
+                SET inizio_turno = ?, fine_turno = ?, ore_totali = ?, tag_turni = ?
+                WHERE id = ? AND milite_id = ?
+            ''', (dt_inizio_iso, dt_fine_iso, ore, tags, timbratura_id, milite_id))
+        else:
+            cursor.execute('''
+                INSERT INTO timbrature (milite_id, inizio_turno, fine_turno, ore_totali, tag_turni)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (milite_id, dt_inizio_iso, dt_fine_iso, ore, tags))
 
         conn.commit()
         conn.close()
@@ -328,18 +286,14 @@ def salva_timbratura_manuale():
 @app.route('/api/timbratura/elimina', methods=['POST'])
 def elimina_timbratura():
     data = request.json or {}
-    milite_id = data.get('milite_id')
-    giorno = data.get('giorno')
+    timbratura_id = data.get('timbratura_id')
 
-    if not milite_id or not giorno:
+    if not timbratura_id:
         return jsonify({'errore': 'Parametri incompleti'}), 400
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        DELETE FROM timbrature 
-        WHERE milite_id = ? AND strftime('%Y-%m-%d', inizio_turno) = ?
-    ''', (milite_id, giorno))
+    cursor.execute('DELETE FROM timbrature WHERE id = ?', (timbratura_id,))
     
     conn.commit()
     conn.close()
