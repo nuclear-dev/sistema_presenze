@@ -50,8 +50,8 @@
   </div>
   <nav>
     <a href="/">Timbratura</a>
-    <a href="/dashboard"><strong>Dashboard Excel</strong></a>
-    <a href="/militi">Anagrafica Militi</a>
+    <a href="/dashboard"><strong>Gestione Turni</strong></a>
+    <a href="/militi">Gestione Militi</a>
   </nav>
 </div>
 
@@ -279,7 +279,7 @@
       thRow.innerHTML += `<th class="${isToday ? 'today-col' : ''}" ${isToday ? 'id="th-today"' : ''}>${gFmt}</th>`;
     });
     
-    thRow.innerHTML += '<th class="total-col">Ore per Tag</th>';
+    thRow.innerHTML += '<th class="total-col">Ore per Turno</th>';
     thRow.innerHTML += '<th class="total-col">Totale Ore</th>';
 
     const tbody = document.getElementById('tb-body');
